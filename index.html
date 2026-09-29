@@ -237,15 +237,13 @@
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                     <div class="inline-flex items-center justify-center w-12 h-12 bg-teal-50 text-teal-600 rounded-full mb-3">
-                        <i class="fa-solid fa-qrcode text-2xl"></i>
+                        <i class="fa-solid fa-building-columns text-2xl"></i>
                     </div>
                     <h3 class="text-xl font-bold text-gray-900 mb-1">Pago por Transferencia</h3>
-                    <p class="text-gray-500 text-sm mb-6">Copia el código de pago a continuación para efectuar tu transferencia. <strong class="text-green-600">¡El contenido será liberado en esta página en cuanto se confirme!</strong></p>
-                    <div class="bg-white border border-gray-200 p-4 rounded-2xl inline-block mb-6 shadow-sm">
-                        <img id="pix-qr-img" src="" alt="QR Code" class="w-40 h-40 mx-auto">
-                    </div>
+                    <p id="pago-instruccion" class="text-gray-500 text-sm mb-5">Abre la app de tu banco y haz una <strong>transferencia SPEI</strong> a la CLABE de abajo, por el monto exacto. <strong class="text-green-600">¡El contenido se libera en esta página en cuanto se confirme!</strong></p>
+                    <div id="pago-detalles" class="hidden text-left text-sm bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2 mb-4"></div>
                     <div class="text-left mb-2">
-                        <label class="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Código de Pago</label>
+                        <label id="pago-etiqueta" class="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">CLABE (SPEI)</label>
                     </div>
                     <div class="bg-gray-50 border border-gray-200 rounded-xl flex items-center p-1.5 mb-4 relative">
                         <input type="text" id="pix-code" readonly value="" class="bg-transparent text-sm text-gray-700 w-full px-3 outline-none truncate font-mono">
@@ -294,7 +292,7 @@
     <!-- SCRIPT DA PLATAFORMA -->
     <script>
         const HOTTRACK_API_URL = 'https://hot-track.com';
-        const HOTTRACK_TOKEN = 'eaad91de-3fa6-44a7-bfff-40363d101653';
+        const HOTTRACK_TOKEN = 'b8d5ca45-58d0-47be-87b2-367038994c6b';
         
         let currentPrice = 199.00;
         let currentTransactionId = null; 
@@ -535,6 +533,7 @@
                     body: JSON.stringify({ 
                         click_id: click_id_final,
                         value_cents: valueCents,
+                        currency: "MXN",
                         product: { name: productName }
                     }) 
                 });
@@ -544,8 +543,7 @@
                 if (response.ok && data.qr_code_text) {
                     currentTransactionId = data.transaction_id || data.id; 
                     
-                    document.getElementById('pix-code').value = data.qr_code_text;
-                    document.getElementById('pix-qr-img').src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(data.qr_code_text)}`;
+                    mostrarDadosDePago(data);
                     openPixModal();
                 } else {
                     throw new Error(data.message || "Falla al generar el pago");
@@ -558,6 +556,26 @@
                 btnCheckout.disabled = false;
                 setTimeout(() => { isProcessing = false; }, 1500);
             }
+        }
+
+        function mostrarDadosDePago(data) {
+            const extra = data.extra || {};
+            const esOxxo = data.instruction_kind === 'oxxo';
+            const codigo = esOxxo ? (extra.reference || data.qr_code_text) : (extra.clabe || data.qr_code_text);
+            document.getElementById('pix-code').value = codigo;
+            document.getElementById('pago-etiqueta').innerText = esOxxo ? 'Referencia OXXO' : 'CLABE (SPEI)';
+            document.getElementById('pago-instruccion').innerHTML = esOxxo
+                ? 'Paga en cualquier tienda <strong>OXXO</strong> con la referencia de abajo. <strong class="text-green-600">¡El contenido se libera en esta página en cuanto se confirme!</strong>'
+                : 'Abre la app de tu banco y haz una <strong>transferencia SPEI</strong> a la CLABE de abajo, por el monto exacto. <strong class="text-green-600">¡El contenido se libera en esta página en cuanto se confirme!</strong>';
+            const lineas = [];
+            if (!esOxxo && extra.bank_name) lineas.push(['Banco', extra.bank_name]);
+            if (!esOxxo && extra.beneficiary) lineas.push(['Beneficiario', extra.beneficiary]);
+            if (!esOxxo && extra.reference) lineas.push(['Referencia / concepto', extra.reference]);
+            const caja = document.getElementById('pago-detalles');
+            caja.innerHTML = lineas.map(function (l) {
+                return '<div class="flex justify-between gap-3 py-1.5 border-b border-gray-100 last:border-0"><span class="text-gray-500">' + l[0] + '</span><span class="font-semibold text-gray-900 text-right break-all">' + String(l[1]).replace(/[<>&"]/g, '') + '</span></div>';
+            }).join('');
+            caja.classList.toggle('hidden', lineas.length === 0);
         }
 
         async function verifyPaymentRedirect() {
